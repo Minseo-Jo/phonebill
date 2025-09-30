@@ -151,7 +151,7 @@ podTemplate(
                             sh "podman login docker.io --username \$DOCKERHUB_USERNAME --password \$DOCKERHUB_PASSWORD"
                             
                             // ACR 로그인
-                            sh "podman login acrdigitalgarage01.azurecr.io --username \$ACR_USERNAME --password \$ACR_PASSWORD"
+                            sh "podman login acrdigitalgarage03.azurecr.io --username \$ACR_USERNAME --password \$ACR_PASSWORD"
 
                             services.each { service ->
                                 sh """
@@ -159,9 +159,9 @@ podTemplate(
                                         --build-arg BUILD_LIB_DIR="${service}/build/libs" \\
                                         --build-arg ARTIFACTORY_FILE="${service}.jar" \\
                                         -f deployment/container/Dockerfile-backend \\
-                                        -t acrdigitalgarage01.azurecr.io/phonebill/${service}:${id}-${imageTag} .
+                                        -t acrdigitalgarage03.azurecr.io/phonebill/${service}:${id}-${imageTag} .
 
-                                    podman push acrdigitalgarage01.azurecr.io/phonebill/${service}:${id}-${imageTag}
+                                    podman push acrdigitalgarage03.azurecr.io/phonebill/${service}:${id}-${imageTag}
                                 """
                             }
                         }
@@ -186,7 +186,7 @@ podTemplate(
 
                         # 이미지 태그 업데이트
                         for service in \$services; do
-                            \$HOME/bin/kustomize edit set image acrdigitalgarage01.azurecr.io/phonebill/\$service:${id}-${imageTag}
+                            \$HOME/bin/kustomize edit set image acrdigitalgarage03.azurecr.io/phonebill/\$service:${id}-${imageTag}
                         done
 
                         # 매니페스트 적용
