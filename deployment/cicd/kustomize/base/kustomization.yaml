@@ -5,7 +5,6 @@ metadata:
   name: phonebill-base
 
 resources:
-
   # Common resources
   - common/cm-common.yaml
   - common/secret-common.yaml
@@ -22,32 +21,36 @@ resources:
   - user-service/service.yaml
   - user-service/cm-user-service.yaml
   - user-service/secret-user-service.yaml
-  
+
   # bill-service
   - bill-service/deployment.yaml
   - bill-service/service.yaml
   - bill-service/cm-bill-service.yaml
   - bill-service/secret-bill-service.yaml
-  
+
   # product-service
   - product-service/deployment.yaml
   - product-service/service.yaml
   - product-service/cm-product-service.yaml
   - product-service/secret-product-service.yaml
-  
+
   # kos-mock
   - kos-mock/deployment.yaml
   - kos-mock/service.yaml
   - kos-mock/cm-kos-mock.yaml
 
+commonLabels:
+  app: phonebill
+  version: v1
+
 images:
-  - name: acrdigitalgarage01.azurecr.io/phonebill/api-gateway
+  - name: acrdigitalgarage03.azurecr.io/phonebill/api-gateway
     newTag: latest
-  - name: acrdigitalgarage01.azurecr.io/phonebill/user-service
+  - name: acrdigitalgarage03.azurecr.io/phonebill/user-service
     newTag: latest
-  - name: acrdigitalgarage01.azurecr.io/phonebill/bill-service
+  - name: acrdigitalgarage03.azurecr.io/phonebill/bill-service
     newTag: latest
-  - name: acrdigitalgarage01.azurecr.io/phonebill/product-service
+  - name: acrdigitalgarage03.azurecr.io/phonebill/product-service
     newTag: latest
-  - name: acrdigitalgarage01.azurecr.io/phonebill/kos-mock
+  - name: acrdigitalgarage03.azurecr.io/phonebill/kos-mock
     newTag: latest

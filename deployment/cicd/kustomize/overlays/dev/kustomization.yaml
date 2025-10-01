@@ -53,13 +53,13 @@ patches:
       name: secret-product-service
 
 images:
-  - name: acrdigitalgarage01.azurecr.io/phonebill/api-gateway
-    newTag: dev-latest
-  - name: acrdigitalgarage01.azurecr.io/phonebill/user-service
-    newTag: dev-latest
-  - name: acrdigitalgarage01.azurecr.io/phonebill/bill-service
-    newTag: dev-latest
-  - name: acrdigitalgarage01.azurecr.io/phonebill/product-service
-    newTag: dev-latest
-  - name: acrdigitalgarage01.azurecr.io/phonebill/kos-mock
-    newTag: dev-latest
+  - name: acrdigitalgarage03.azurecr.io/phonebill/api-gateway
+    newTag: latest
+  - name: acrdigitalgarage03.azurecr.io/phonebill/user-service
+    newTag: latest
+  - name: acrdigitalgarage03.azurecr.io/phonebill/bill-service
+    newTag: latest
+  - name: acrdigitalgarage03.azurecr.io/phonebill/product-service
+    newTag: latest
+  - name: acrdigitalgarage03.azurecr.io/phonebill/kos-mock
+    newTag: latest
