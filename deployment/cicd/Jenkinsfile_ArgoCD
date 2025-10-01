@@ -59,6 +59,16 @@ podTemplate(
             resourceRequestMemory: '512Mi',
             resourceLimitCpu: '500m',
             resourceLimitMemory: '1Gi'
+        ),
+        containerTemplate(
+            name: 'git',
+            image: 'alpine/git:latest',
+            command: 'cat',
+            ttyEnabled: true,
+            resourceRequestCpu: '100m',
+            resourceRequestMemory: '256Mi',
+            resourceLimitCpu: '300m',
+            resourceLimitMemory: '512Mi'
         )
     ],
     volumes: [
@@ -179,35 +189,44 @@ podTemplate(
                 }
             }
 
-            stage('Update Kustomize & Deploy') {
-                container('azure-cli') {
-                    sh """
-                        # Kustomize 설치 (sudo 없이 사용자 디렉토리에 설치)
-                        curl -s "https://raw.githubusercontent.com/kubernetes-sigs/kustomize/master/hack/install_kustomize.sh" | bash
-                        mkdir -p \$HOME/bin
-                        mv kustomize \$HOME/bin/
-                        export PATH=\$PATH:\$HOME/bin
+            stage('Update Manifest Repository') {
+                container('git') {
+                    withCredentials([usernamePassword(
+                        credentialsId: 'github-credentials-dg0515',
+                        usernameVariable: 'GIT_USERNAME',
+                        passwordVariable: 'GIT_TOKEN'
+                    )]) {
+                        sh """
+                            # 매니페스트 레포지토리 클론
+                            REPO_URL=\$(echo "https://github.com/Minseo-Jo/phonebill.git" | sed 's|https://||')
+                            git clone https://\${GIT_USERNAME}:\${GIT_TOKEN}@\${REPO_URL} manifest-repo
+                            cd manifest-repo
 
-                        # 환경별 디렉토리로 이동
-                        cd deployment/cicd/kustomize/overlays/${environment}
+                            # Kustomize 설치
+                            curl -s "https://raw.githubusercontent.com/kubernetes-sigs/kustomize/master/hack/install_kustomize.sh" | bash
+                            mkdir -p \$HOME/bin && mv kustomize \$HOME/bin/
+                            export PATH=\$PATH:\$HOME/bin
 
-                        # 서비스 목록 정의 (실제 서비스명으로 교체, 공백으로 구분)
-                        services="api-gateway user-service bill-service product-service kos-mock"
+                            # 환경별 매니페스트 업데이트
+                            cd deployment/cicd/kustomize/overlays/${environment}
 
-                        # 이미지 태그 업데이트
-                        for service in \$services; do
-                            \$HOME/bin/kustomize edit set image acrdigitalgarage03.azurecr.io/phonebill/\$service:${environment}-${imageTag}
-                        done
+                            # 각 서비스별 이미지 태그 업데이트
+                            services="api-gateway user-service bill-service product-service kos-mock"
+                            for service in \$services; do
+                                \$HOME/bin/kustomize edit set image acrdigitalgarage03.azurecr.io/phonebill/\$service:${environment}-${imageTag}
+                            done
 
-                        # 매니페스트 적용
-                        kubectl apply -k .
+                            # Git 설정 및 푸시
+                            cd ../../../../..
+                            git config user.name "Jenkins CI"
+                            git config user.email "jenkins@example.com"
+                            git add .
+                            git commit -m "🚀 Update phonebill ${environment} images to ${environment}-${imageTag}"
+                            git push origin main
 
-                        # 배포 상태 확인
-                        echo "Waiting for deployments to be ready..."
-                        for service in \$services; do
-                            kubectl -n phonebill-dg0515 wait --for=condition=available deployment/\$service --timeout=300s
-                        done
-                    """
+                            echo "✅ 매니페스트 업데이트 완료. ArgoCD가 자동으로 배포합니다."
+                        """
+                    }
                 }
             }
 

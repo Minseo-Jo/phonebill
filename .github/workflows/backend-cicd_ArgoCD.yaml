@@ -1,4 +1,4 @@
-name: Backend CI/CD with ArgoCD
+name: Backend CI/CD Pipeline with ArgoCD
 
 on:
   push:
@@ -25,94 +25,21 @@ env:
   ACR_NAME: acrdigitalgarage03
   RESOURCE_GROUP: rg-digitalgarage-03
   AKS_CLUSTER: aks-digitalgarage-03
+  NAMESPACE: phonebill-dg0515
   SYSTEM_NAME: phonebill
   MANIFEST_REPO_URL: https://github.com/Minseo-Jo/phonebill.git
+  SERVICE_NAMES: "api-gateway user-service bill-service product-service kos-mock"
 
 jobs:
-  detect-changes:
+  build:
     runs-on: ubuntu-latest
     outputs:
-      api-gateway: ${{ steps.changes.outputs.api-gateway }}
-      user-service: ${{ steps.changes.outputs.user-service }}
-      bill-service: ${{ steps.changes.outputs.bill-service }}
-      product-service: ${{ steps.changes.outputs.product-service }}
-      kos-mock: ${{ steps.changes.outputs.kos-mock }}
-      common: ${{ steps.changes.outputs.common }}
-      environment: ${{ steps.env.outputs.environment }}
-      image_tag: ${{ steps.tag.outputs.image_tag }}
+      image_tag: ${{ steps.meta.outputs.image_tag }}
+      environment: ${{ steps.meta.outputs.environment }}
 
     steps:
-    - uses: actions/checkout@v4
-      with:
-        fetch-depth: 0
-
-    - uses: dorny/paths-filter@v2
-      id: changes
-      with:
-        filters: |
-          api-gateway:
-            - 'api-gateway/**'
-            - 'common/**'
-          user-service:
-            - 'user-service/**'
-            - 'common/**'
-          bill-service:
-            - 'bill-service/**'
-            - 'common/**'
-          product-service:
-            - 'product-service/**'
-            - 'common/**'
-          kos-mock:
-            - 'kos-mock/**'
-            - 'common/**'
-          common:
-            - 'common/**'
-
-    - name: Set environment based on branch
-      id: env
-      run: |
-        if [[ ${{ github.ref_name }} == "main" ]]; then
-          echo "environment=prod" >> $GITHUB_OUTPUT
-        elif [[ ${{ github.ref_name }} == "develop" ]]; then
-          echo "environment=staging" >> $GITHUB_OUTPUT
-        else
-          echo "environment=dev" >> $GITHUB_OUTPUT
-        fi
-
-    - name: Generate image tag
-      id: tag
-      run: |
-        SHORT_SHA=$(echo ${{ github.sha }} | cut -c1-7)
-        echo "image_tag=${SHORT_SHA}" >> $GITHUB_OUTPUT
-
-  build:
-    needs: detect-changes
-    runs-on: ubuntu-latest
-    if: |
-      needs.detect-changes.outputs.api-gateway == 'true' ||
-      needs.detect-changes.outputs.user-service == 'true' ||
-      needs.detect-changes.outputs.bill-service == 'true' ||
-      needs.detect-changes.outputs.product-service == 'true' ||
-      needs.detect-changes.outputs.kos-mock == 'true' ||
-      needs.detect-changes.outputs.common == 'true'
-
-    strategy:
-      matrix:
-        service: [api-gateway, user-service, bill-service, product-service, kos-mock]
-        exclude:
-          - service: api-gateway
-            condition: ${{ needs.detect-changes.outputs.api-gateway != 'true' }}
-          - service: user-service
-            condition: ${{ needs.detect-changes.outputs.user-service != 'true' }}
-          - service: bill-service
-            condition: ${{ needs.detect-changes.outputs.bill-service != 'true' }}
-          - service: product-service
-            condition: ${{ needs.detect-changes.outputs.product-service != 'true' }}
-          - service: kos-mock
-            condition: ${{ needs.detect-changes.outputs.kos-mock != 'true' }}
-
-    steps:
-    - uses: actions/checkout@v4
+    - name: Checkout code
+      uses: actions/checkout@v4
 
     - name: Set up JDK 17
       uses: actions/setup-java@v4
@@ -123,57 +50,50 @@ jobs:
     - name: Cache Gradle packages
       uses: actions/cache@v3
       with:
-        path: |
-          ~/.gradle/caches
-          ~/.gradle/wrapper
-        key: ${{ runner.os }}-gradle-${{ hashFiles('**/*.gradle*', '**/gradle-wrapper.properties') }}
-        restore-keys: |
-          ${{ runner.os }}-gradle-
+        path: ~/.gradle/caches
+        key: ${{ runner.os }}-gradle-${{ hashFiles('**/*.gradle*') }}
+        restore-keys: ${{ runner.os }}-gradle
 
     - name: Grant execute permission for gradlew
-      run: chmod +x ./gradlew
+      run: chmod +x gradlew
+
+    - name: Set image metadata
+      id: meta
+      run: |
+        BRANCH_NAME=${GITHUB_REF#refs/heads/}
+        if [ "$BRANCH_NAME" = "main" ]; then
+          ENVIRONMENT="prod"
+        elif [ "$BRANCH_NAME" = "develop" ]; then
+          ENVIRONMENT="dev"
+        else
+          ENVIRONMENT="staging"
+        fi
+
+        IMAGE_TAG=${GITHUB_SHA::7}-$(date +%Y%m%d%H%M%S)
+
+        echo "environment=$ENVIRONMENT" >> $GITHUB_OUTPUT
+        echo "image_tag=$IMAGE_TAG" >> $GITHUB_OUTPUT
+        echo "Environment: $ENVIRONMENT"
+        echo "Image Tag: $IMAGE_TAG"
 
     - name: Build with Gradle
-      run: ./gradlew ${{ matrix.service }}:build -x test
+      run: |
+        ./gradlew clean build -x test
+        echo "✅ Build completed successfully"
 
     - name: Run Tests
-      run: ./gradlew ${{ matrix.service }}:test
-
-    - name: Publish Test Results
-      uses: EnricoMi/publish-unit-test-result-action@v2
-      if: always()
-      with:
-        files: |
-          ${{ matrix.service }}/build/test-results/test/*.xml
+      run: |
+        ./gradlew test
+        echo "✅ Tests completed successfully"
 
   release:
-    needs: [detect-changes, build]
+    needs: build
     runs-on: ubuntu-latest
-    if: |
-      needs.detect-changes.outputs.api-gateway == 'true' ||
-      needs.detect-changes.outputs.user-service == 'true' ||
-      needs.detect-changes.outputs.bill-service == 'true' ||
-      needs.detect-changes.outputs.product-service == 'true' ||
-      needs.detect-changes.outputs.kos-mock == 'true' ||
-      needs.detect-changes.outputs.common == 'true'
-
-    strategy:
-      matrix:
-        service: [api-gateway, user-service, bill-service, product-service, kos-mock]
-        exclude:
-          - service: api-gateway
-            condition: ${{ needs.detect-changes.outputs.api-gateway != 'true' }}
-          - service: user-service
-            condition: ${{ needs.detect-changes.outputs.user-service != 'true' }}
-          - service: bill-service
-            condition: ${{ needs.detect-changes.outputs.bill-service != 'true' }}
-          - service: product-service
-            condition: ${{ needs.detect-changes.outputs.product-service != 'true' }}
-          - service: kos-mock
-            condition: ${{ needs.detect-changes.outputs.kos-mock != 'true' }}
+    if: github.event_name == 'push'
 
     steps:
-    - uses: actions/checkout@v4
+    - name: Checkout code
+      uses: actions/checkout@v4
 
     - name: Set up JDK 17
       uses: actions/setup-java@v4
@@ -181,43 +101,70 @@ jobs:
         java-version: '17'
         distribution: 'temurin'
 
-    - name: Grant execute permission for gradlew
-      run: chmod +x ./gradlew
+    - name: Cache Gradle packages
+      uses: actions/cache@v3
+      with:
+        path: ~/.gradle/caches
+        key: ${{ runner.os }}-gradle-${{ hashFiles('**/*.gradle*') }}
+        restore-keys: ${{ runner.os }}-gradle
 
-    - name: Build JAR
-      run: ./gradlew ${{ matrix.service }}:bootJar
+    - name: Grant execute permission for gradlew
+      run: chmod +x gradlew
+
+    - name: Build JAR files
+      run: |
+        ./gradlew clean build -x test
+        echo "✅ JAR build completed"
 
     - name: Azure Container Registry Login
-      uses: Azure/docker-login@v1
+      uses: azure/docker-login@v1
       with:
         login-server: ${{ env.ACR_NAME }}.azurecr.io
         username: ${{ secrets.ACR_USERNAME }}
         password: ${{ secrets.ACR_PASSWORD }}
 
-    - name: Build and Push Docker Image
+    - name: Build and Push Docker Images
       run: |
-        IMAGE_TAG="${{ needs.detect-changes.outputs.environment }}-${{ needs.detect-changes.outputs.image_tag }}"
-        docker build -t ${{ env.ACR_NAME }}.azurecr.io/${{ env.SYSTEM_NAME }}/${{ matrix.service }}:${IMAGE_TAG} \
-          -f ${{ matrix.service }}/Dockerfile .
-        docker push ${{ env.ACR_NAME }}.azurecr.io/${{ env.SYSTEM_NAME }}/${{ matrix.service }}:${IMAGE_TAG}
+        ENVIRONMENT=${{ needs.build.outputs.environment }}
+        IMAGE_TAG=${{ needs.build.outputs.image_tag }}
+
+        # 각 서비스별 이미지 빌드 및 푸시
+        for service in ${{ env.SERVICE_NAMES }}; do
+          echo "🔨 Building $service image..."
+
+          # Dockerfile 경로 확인
+          if [ -f "$service/Dockerfile" ]; then
+            DOCKERFILE_PATH="$service/Dockerfile"
+          else
+            echo "❌ Dockerfile not found for $service"
+            continue
+          fi
+
+          # 이미지 빌드
+          docker build \
+            -f $DOCKERFILE_PATH \
+            -t ${{ env.ACR_NAME }}.azurecr.io/${{ env.SYSTEM_NAME }}/$service:$ENVIRONMENT-$IMAGE_TAG \
+            -t ${{ env.ACR_NAME }}.azurecr.io/${{ env.SYSTEM_NAME }}/$service:latest \
+            .
+
+          # 이미지 푸시
+          docker push ${{ env.ACR_NAME }}.azurecr.io/${{ env.SYSTEM_NAME }}/$service:$ENVIRONMENT-$IMAGE_TAG
+          docker push ${{ env.ACR_NAME }}.azurecr.io/${{ env.SYSTEM_NAME }}/$service:latest
+
+          echo "✅ $service image pushed successfully"
+        done
 
   update-manifest:
     name: Update Manifest Repository
-    needs: [detect-changes, build, release]
+    needs: [build, release]
     runs-on: ubuntu-latest
-    if: |
-      needs.detect-changes.outputs.api-gateway == 'true' ||
-      needs.detect-changes.outputs.user-service == 'true' ||
-      needs.detect-changes.outputs.bill-service == 'true' ||
-      needs.detect-changes.outputs.product-service == 'true' ||
-      needs.detect-changes.outputs.kos-mock == 'true' ||
-      needs.detect-changes.outputs.common == 'true'
+    if: github.event_name == 'push'
 
     steps:
     - name: Set image tag environment variable
       run: |
-        echo "IMAGE_TAG=${{ needs.detect-changes.outputs.image_tag }}" >> $GITHUB_ENV
-        echo "ENVIRONMENT=${{ needs.detect-changes.outputs.environment }}" >> $GITHUB_ENV
+        echo "IMAGE_TAG=${{ needs.build.outputs.image_tag }}" >> $GITHUB_ENV
+        echo "ENVIRONMENT=${{ needs.build.outputs.environment }}" >> $GITHUB_ENV
 
     - name: Update Manifest Repository
       run: |
@@ -230,48 +177,21 @@ jobs:
         curl -s "https://raw.githubusercontent.com/kubernetes-sigs/kustomize/master/hack/install_kustomize.sh" | bash
         sudo mv kustomize /usr/local/bin/
 
-        # 매니페스트 업데이트 (kustomize 디렉토리가 있는 경우에만)
-        if [ -d "${{ env.SYSTEM_NAME }}/kustomize/overlays/${{ env.ENVIRONMENT }}" ]; then
-          cd ${{ env.SYSTEM_NAME }}/kustomize/overlays/${{ env.ENVIRONMENT }}
+        # 매니페스트 업데이트 (기존 deployment/cicd 경로 사용)
+        cd deployment/cicd/kustomize/overlays/${{ env.ENVIRONMENT }}
 
-          # 변경된 서비스들만 이미지 태그 업데이트
-          services=""
-          if [[ "${{ needs.detect-changes.outputs.api-gateway }}" == "true" ]]; then
-            services="$services api-gateway"
-          fi
-          if [[ "${{ needs.detect-changes.outputs.user-service }}" == "true" ]]; then
-            services="$services user-service"
-          fi
-          if [[ "${{ needs.detect-changes.outputs.bill-service }}" == "true" ]]; then
-            services="$services bill-service"
-          fi
-          if [[ "${{ needs.detect-changes.outputs.product-service }}" == "true" ]]; then
-            services="$services product-service"
-          fi
-          if [[ "${{ needs.detect-changes.outputs.kos-mock }}" == "true" ]]; then
-            services="$services kos-mock"
-          fi
+        # 각 서비스별 이미지 태그 업데이트
+        services="${{ env.SERVICE_NAMES }}"
+        for service in $services; do
+          kustomize edit set image ${{ env.ACR_NAME }}.azurecr.io/${{ env.SYSTEM_NAME }}/$service:${{ env.ENVIRONMENT }}-${{ env.IMAGE_TAG }}
+        done
 
-          # 각 서비스별 이미지 태그 업데이트
-          for service in $services; do
-            echo "Updating $service image tag..."
-            kustomize edit set image ${{ env.ACR_NAME }}.azurecr.io/${{ env.SYSTEM_NAME }}/$service:${{ env.ENVIRONMENT }}-${{ env.IMAGE_TAG }}
-          done
+        # Git 설정 및 푸시
+        cd ../../../../..
+        git config user.name "GitHub Actions"
+        git config user.email "actions@github.com"
+        git add .
+        git commit -m "🚀 Update ${{ env.SYSTEM_NAME }} ${{ env.ENVIRONMENT }} images to ${{ env.ENVIRONMENT }}-${{ env.IMAGE_TAG }}"
+        git push origin main
 
-          # Git 설정 및 푸시
-          cd ../../../..
-          git config user.name "GitHub Actions"
-          git config user.email "actions@github.com"
-          git add .
-
-          # 변경사항이 있는 경우에만 커밋
-          if ! git diff --staged --quiet; then
-            git commit -m "🚀 Update ${{ env.SYSTEM_NAME }} ${{ env.ENVIRONMENT }} images to ${{ env.ENVIRONMENT }}-${{ env.IMAGE_TAG }}"
-            git push origin main
-            echo "✅ 매니페스트 업데이트 완료. ArgoCD가 자동으로 배포합니다."
-          else
-            echo "📋 변경사항이 없어서 커밋하지 않았습니다."
-          fi
-        else
-          echo "⚠️ Kustomize 디렉토리가 없습니다: ${{ env.SYSTEM_NAME }}/kustomize/overlays/${{ env.ENVIRONMENT }}"
-        fi
+        echo "✅ 매니페스트 업데이트 완료. ArgoCD가 자동으로 배포합니다."
